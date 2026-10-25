@@ -46,6 +46,10 @@ The following entries remain catalog/roadmap items and are **not implemented as 
 
 Do not label a not-wired catalog row as active in UI. Do not remove executable fingerprint checks or add guessed offsets to make unsupported features appear available.
 
+## Assist disclosure
+
+A non-optional banner is drawn at the top-center of the overlay whenever any of the following is active: speed scale, noclip, frame-step, a non-default physics TPS, native macro playback, input-level macro playback, the auto-clicker, debug hitboxes, or the hitbox-trail override. It lists which ones by name. It has no setting, hotkey, or opacity control, is not part of `settings.ini`, and is independent of Safe Mode, the HUD toggle, and whether the menu is open. This is intentional: nothing in this codebase should let an assisted run look identical to an unassisted one from the player's own screen. New gameplay-affecting hooks must be added to this list (`activeAssistSummary()` in `src/GDClient.cpp`).
+
 ## Known limitations and safety notes
 
 - The overlay is a separate GDI window so the menu does not use the game's OpenGL render path. Its labels are screen-anchored overlays, not objects attached to Cocos2d's world.

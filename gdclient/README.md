@@ -6,6 +6,7 @@ This is a development prototype, not a verified drop-in MegaHack replacement. So
 
 ## Current concrete features
 
+- **Mandatory assist-disclosure banner.** A red banner at the top-center of the screen appears automatically whenever any gameplay-affecting hook is active (speed scale, noclip, frame-step, the physics TPS experiment, native or input-level macro playback, the auto-clicker, debug hitboxes, or the hitbox-trail override), naming exactly which ones. It has no setting, hotkey, opacity control, or "stream-safe" mode to hide it, is not written to `settings.ini`, and is not affected by Safe Mode, the HUD toggle, or menu state. It is deliberately not optional: if a run was assisted, that should be visible to the player and to anyone watching or recording. Do not add a way to suppress it; if you add a new gameplay-affecting hook, add it to the banner's trigger list too.
 - **Horizontal tabbed UI** with Dashboard, Player, Physics, Practice, Labels, Visuals, Creator, Feature Lab, Tools, Settings, and About pages; persistent GDI back buffer; reduced-motion toggle; accent and opacity settings.
 - **Strict game build guard** using the PE timestamps of `GeometryDash.exe`, `libcocos2d.dll`, and `libExtensions.dll`. Native hooks fail closed on unknown builds.
 - **Game delta-time speed scaling** through the supported `GJBaseGameLayer::update` hook. This is experimental and does not currently synchronize FMOD pitch or every timer in the game.

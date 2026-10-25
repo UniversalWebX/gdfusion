@@ -1146,9 +1146,69 @@ void drawAbout(HDC dc, int x, int y, int width) {
     drawText(dc, x + 17, y3 + 59, width - 34, 37, L"Password/copy-lock/verification/account-access bypasses are intentionally not implemented. Other editor, replay, FPS/TPS, audio, and cosmetic features still need their own verified hooks.", RGB(224,178,115), 10, false);
 }
 
+// --- Mandatory assist-disclosure banner -------------------------------------
+// This is intentionally NOT wired to any setting, hotkey, Safe Mode state, or
+// settings.ini key. If any gameplay-affecting hook below is active, the player
+// (and anyone spectating or recording) can see that the run is assisted.
+// Do not add a toggle, keybind, opacity setting, or "stream-safe" mode that
+// hides this banner — that would defeat the point of having it. If you are
+// adding a new gameplay-affecting hook, add it to activeAssistSummary() too.
+std::wstring activeAssistSummary(bool& anyActive) {
+    std::vector<std::wstring> parts;
+
+    const double speed = (g_speedEnabled.load() && hasTimingHook()) ? g_speedMultiplier.load() : 1.0;
+    if (std::abs(speed - 1.0) > 0.001) {
+        wchar_t buf[32]{};
+        swprintf_s(buf, _countof(buf), L"SPEED %.2fx", speed);
+        parts.emplace_back(buf);
+    }
+    if (gdclient::native::noclipEnabled()) parts.emplace_back(L"NOCLIP");
+    if (gdclient::native::frameStepEnabled()) parts.emplace_back(L"FRAME-STEP");
+    if (gdclient::native::physicsTps() != 0) {
+        wchar_t buf[32]{};
+        swprintf_s(buf, _countof(buf), L"TPS %d", gdclient::native::physicsTps());
+        parts.emplace_back(buf);
+    }
+    if (gdclient::native::nativeMacroStats().playing) parts.emplace_back(L"NATIVE MACRO PLAYBACK");
+    if (g_macroReplaying.load()) parts.emplace_back(L"INPUT MACRO PLAYBACK");
+    if (g_autoClicker.load()) parts.emplace_back(L"AUTO CLICKER");
+    if (gdclient::native::hitboxesEnabled()) parts.emplace_back(L"DEBUG HITBOXES");
+    if (gdclient::native::hitboxTrailEnabled()) parts.emplace_back(L"HITBOX TRAIL");
+
+    anyActive = !parts.empty();
+    std::wstring joined;
+    for (std::size_t i = 0; i < parts.size(); ++i) {
+        if (i) joined += L"   •   ";
+        joined += parts[i];
+    }
+    return joined;
+}
+
+// Always evaluated and drawn on every frame, independent of g_showHud,
+// g_menuOpen, g_safeMode, g_levelLabelsVisible, or overlay opacity. There is
+// no code path that can suppress this while an assist is active.
+void drawAssistDisclosureBanner(HDC dc, int clientWidth) {
+    bool anyActive = false;
+    const std::wstring summary = activeAssistSummary(anyActive);
+    if (!anyActive) return;
+
+    const int bannerW = std::clamp(clientWidth - 24, 260, 680);
+    const int bannerX = (clientWidth - bannerW) / 2;
+    constexpr int bannerY = 8;
+    constexpr int bannerH = 30;
+
+    rounded(dc, bannerX, bannerY, bannerW, bannerH, 8, RGB(132, 20, 20), RGB(255, 96, 96));
+    const std::wstring text = L"ASSIST ACTIVE — " + summary;
+    drawText(dc, bannerX + 10, bannerY, bannerW - 20, bannerH, text.c_str(), RGB(255, 236, 236), 12, true, DT_CENTER);
+}
+
 void renderOverlay(HDC dc, int clientWidth, int clientHeight) {
     RECT client{0, 0, clientWidth, clientHeight};
     solidRect(dc, 0, 0, client.right, client.bottom, KEY_COLOR);
+
+    // Drawn first and unconditionally so nothing later in this function — no
+    // HUD toggle, no menu-closed state, no page switch — can cover or skip it.
+    drawAssistDisclosureBanner(dc, clientWidth);
 
     const COLORREF accent = accentColor();
     if (g_showHud.load()) {
