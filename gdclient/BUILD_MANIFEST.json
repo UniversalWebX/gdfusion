@@ -1,0 +1,27 @@
+{
+  "project": "GD Client Ultimate",
+  "catalog_features": 342,
+  "catalog_categories": 17,
+  "catalog_status_counts": {
+    "experimental": 8,
+    "not-wired": 316,
+    "implemented": 18
+  },
+  "generated_contract_cases": 28728,
+  "generated_contract_modules": 48,
+  "code_source_lines": 120897,
+  "text_source_lines": 128422,
+  "generated_test_code_lines": 115488,
+  "native_cpp_lines": 3651,
+  "revision": "native-hitbox-trail-practice-macro-tps-keybinds-v4",
+  "validation": {
+    "python_compile": "passed",
+    "pytest": "82 passed; 28,728 generated feature/configuration contracts execute in 48 batches",
+    "native_catalog_generator": "passed; generated 342 entries",
+    "cpp_delimiters": "balanced in GDClient.cpp, native_game_hooks.cpp, native_game_hooks.hpp, generated_feature_catalog.hpp",
+    "zip_integrity": "verified after final archive creation",
+    "native_msvc_build": "not performed in this Linux environment",
+    "geometry_dash_runtime_test": "not performed"
+  },
+  "notes": "The 100K+ code/test line count is driven primarily by generated configuration-contract tests, not 100K lines of handwritten gameplay hooks. Native features remain experimental and are restricted to two exact Windows x64 PE fingerprints. Hitbox trail hooks are available only on the exact 2.2091 fingerprint and are not a custom frozen death-frame renderer."
+}

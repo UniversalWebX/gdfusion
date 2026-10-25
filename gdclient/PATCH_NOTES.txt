@@ -1,0 +1,29 @@
+GD Client Ultimate — Standalone Native Development Build
+
+Current revision: native-hitbox-trail-practice-macro-tps-keybinds-v4
+
+Implemented in the current source:
+- Strict PE-timestamp matching for two known Geometry Dash Windows x64 builds; unsupported binaries leave all native hooks disabled.
+- External horizontal-tab GDI UI with a persistent backbuffer; no OpenGL SwapBuffers / Cocos2d drawScene menu hook.
+- Native game delta-time speed scaling (experimental), collision-death suppression with contact and accuracy limits, game-debug hitbox toggle, fixed-step TPS experiment, frame-step gate, game-thread priority options, native input macro record/playback, and local-only icon/color preview where hooks exist.
+- Three configurable screen-anchored labels; input overlay shows W/A/S/D, Up, Space, LMB, RMB, per-key hold duration, rolling CPS and peak CPS.
+- JSON settings-profile CLI, settings persistence and 11 keyboard-rebindable hotkeys. Escape cancels keybind capture and duplicate bindings are rejected.
+- Safe Mode guards local gameplay-affecting changes, native and external macros, and auto-clicker actions. It does not intercept outbound HTTP or guarantee online integrity.
+- Fixed-step TPS accepts 240/360/480/1000 and a 32-substep catch-up cap. This is a simulation update experiment, not FPS unlock.
+- Updated catalog to 342 entries; generated 28,728 feature/configuration contracts in 48 modules.
+- Added experimental native hitbox-trail decision hooks for the exact 2.2091 build. Both draw and record decisions must hook successfully; custom death-frame freeze and per-category shapes remain not wired.
+
+Not implemented: visual frame extrapolation; presentation FPS bypass; engine-global TPS; FMOD DSP pitch correction; StartPos switching/smart state replay; custom per-category hitbox drawing; editor/password/copy/verify bypasses; layout/particle/portal suppression; in-game Cocos2d label objects; best-run tracking tied to game internals; HTTP submission filtering; and several other entries explicitly listed as not-wired in FEATURE_STATUS.md.
+
+Validation performed in this environment:
+- Python syntax compilation passed.
+- Full Python suite: 82 passed.
+- 28,728 generated contract checks are evaluated in 48 batched modules.
+- Native catalog generator emitted 342 entries.
+- ZIP integrity check will be run as part of packaging.
+
+Not performed:
+- Native MSVC compilation.
+- Injection/runtime verification inside Geometry Dash.
+- Gameplay timing, native macro determinism, hitbox behavior, audio sync, or supported-build runtime tests.
+
