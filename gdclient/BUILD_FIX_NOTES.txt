@@ -1,0 +1,15 @@
+BUILD FIX NOTES
+===============
+
+This repack fixes the compiler error in src/GDClient.cpp where the Windows SDK
+GDI+ headers could not see COM types such as IStream and PROPID. With
+WIN32_LEAN_AND_MEAN enabled, objidl.h and propidl.h are now included explicitly
+before gdiplus.h.
+
+The launcher also prefers the CMake generator already stored in build/CMakeCache.txt,
+which avoids a confusing Visual Studio 2026-vs-2022 generator mismatch on repeat builds.
+
+The project was patched from the build log, but this environment cannot run the
+Windows MSVC build itself. After extraction, run `python gd_client.py --build` on
+Windows to verify compilation. If a different compiler error appears, share the new
+log.
