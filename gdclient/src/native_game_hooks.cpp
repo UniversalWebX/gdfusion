@@ -98,9 +98,18 @@ std::atomic<bool> g_limitTriggered{false};
 std::atomic<bool> g_frameStepEnabled{false};
 std::atomic<bool> g_frameStepPaused{false};
 std::atomic<std::uint32_t> g_frameStepBudget{0};
-std::atomic<bool> g_instantCompleteRequested{false};
 std::atomic<int> g_gameThreadPriorityLevel{0};
-std::atomic<bool> g_instantCompleteAvailable{false};
+std::atomic<bool> g_completionGuardAvailable{false};
+// True once any gameplay-affecting hook has been active at any point during
+// the current attempt (since the level was entered or last reset). Cleared
+// in resetRunStats(), which every attempt boundary already calls.
+std::atomic<bool> g_assistedThisAttempt{false};
+// Set by the UI layer for assists that live outside native_game_hooks.cpp
+// (the input-level macro player, the auto-clicker). See setExternalAssistActive().
+std::atomic<bool> g_externalAssistActive{false};
+// Incremented every time hookLevelComplete suppresses a real completion
+// because the attempt was assisted. The UI polls this to show a toast.
+std::atomic<std::uint64_t> g_completionBlockedCount{0};
 std::atomic<bool> g_nativeMacroHookAvailable{false};
 std::atomic<bool> g_nativeMacroRecording{false};
 std::atomic<bool> g_nativeMacroPlaying{false};
@@ -168,7 +177,7 @@ ShouldDrawHitboxesFn g_originalShouldDrawHitboxes = nullptr;
 ShouldDrawHitboxTrailFn g_originalShouldDrawHitboxTrail = nullptr;
 ShouldRecordHitboxTrailFn g_originalShouldRecordHitboxTrail = nullptr;
 TogglePracticeFn g_originalTogglePractice = nullptr;
-LevelCompleteFn g_levelComplete = nullptr;
+LevelCompleteFn g_originalLevelComplete = nullptr;
 HandleButtonFn g_originalHandleButton = nullptr;
 IsIconUnlockedFn g_originalIsIconUnlocked = nullptr;
 IsColorUnlockedFn g_originalIsColorUnlocked = nullptr;
@@ -278,6 +287,23 @@ void resetRunStats() {
     g_contacts.store(0);
     g_accuracy.store(100.0);
     g_limitTriggered.store(false);
+    // New attempt: whatever was assisted before this point no longer applies.
+    g_assistedThisAttempt.store(false);
+}
+
+// Anything that changes real gameplay outcome: timing, collision, input
+// automation, or revealing information the stock game doesn't show during
+// play. If you add a new gameplay-affecting hook, add its check here.
+bool anyNativeAssistActive() {
+    if (std::abs(g_speed.load() - 1.0) > 0.001) return true;
+    if (g_noclipEnabled.load()) return true;
+    if (g_frameStepEnabled.load()) return true;
+    if (g_physicsTps.load() != 0) return true;
+    if (g_nativeMacroPlaying.load()) return true;
+    if (g_hitboxesEnabled.load()) return true;
+    if (g_hitboxTrailEnabled.load()) return true;
+    if (g_externalAssistActive.load()) return true;
+    return false;
 }
 
 int priorityValue(int level) {
@@ -475,10 +501,8 @@ void runOneLayerTick(void* self, float dt) {
     processNativeMacroPlayback(self);
     g_originalLayerUpdate(self, dt);
 
-    // Service the completion request on the game thread, after a native update.
-    if (g_instantCompleteRequested.exchange(false) && self == g_activePlayLayer.load() &&
-        g_inLevel.load() && g_levelComplete) {
-        g_levelComplete(self);
+    if (self == g_activePlayLayer.load() && g_inLevel.load() && anyNativeAssistActive()) {
+        g_assistedThisAttempt.store(true);
     }
 }
 
@@ -552,7 +576,6 @@ bool __fastcall hookPlayInit(void* self, void* level, bool dontCreateObjects) {
     g_physicsTps.store(0);
     g_physicsAccumulator = 0.0;
     g_lastUpdateTps = 0;
-    g_instantCompleteRequested.store(false);
     g_nativeMacroRecording.store(false);
     g_nativeMacroPlaying.store(false);
     g_nativeMacroStopRequested.store(false);
@@ -634,6 +657,21 @@ void __fastcall hookResetLevel(void* self) {
     if (self == g_activePlayLayer.load()) { g_physicsAccumulator = 0.0; resetRunStats(); }
 }
 
+// Fires when the game itself decides the level was completed. If the
+// attempt was assisted, the original function is deliberately NOT called:
+// the game never transitions into its own level-complete state, so there is
+// no end-level screen, no local best-percent write, and nothing downstream
+// (including score/star submission, which in the real game only happens as
+// a consequence of this call) gets a chance to run. If the attempt was
+// clean, this hook is a pure passthrough and changes nothing.
+void __fastcall hookLevelComplete(void* self) {
+    if (self == g_activePlayLayer.load() && g_inLevel.load() && g_assistedThisAttempt.load()) {
+        g_completionBlockedCount.fetch_add(1);
+        return;
+    }
+    if (g_originalLevelComplete) g_originalLevelComplete(self);
+}
+
 void __fastcall hookOnQuit(void* self) {
     if (self == g_activePlayLayer.load()) {
         g_nativeMacroRecording.store(false);
@@ -649,8 +687,8 @@ void __fastcall hookOnQuit(void* self) {
         g_frameStepEnabled.store(false);
         g_frameStepPaused.store(false);
         g_frameStepBudget.store(0);
-        g_instantCompleteRequested.store(false);
         g_physicsAccumulator = 0.0;
+        g_assistedThisAttempt.store(false);
     }
     if (g_originalOnQuit) g_originalOnQuit(self);
     if (self == g_activePlayLayer.load()) g_activePlayLayer.store(nullptr);
@@ -761,8 +799,10 @@ bool initialize() {
     ok &= installOne(g_build->playLayerOnQuitRva, reinterpret_cast<void*>(&hookOnQuit), reinterpret_cast<void**>(&g_originalOnQuit), L"PlayLayer::onQuit", true);
 
     if (ok && g_build->playLayerLevelCompleteRva != 0) {
-        g_levelComplete = reinterpret_cast<LevelCompleteFn>(resolveGameRva(g_build->playLayerLevelCompleteRva));
-        g_instantCompleteAvailable.store(g_levelComplete != nullptr);
+        if (installOne(g_build->playLayerLevelCompleteRva, reinterpret_cast<void*>(&hookLevelComplete),
+                reinterpret_cast<void**>(&g_originalLevelComplete), L"PlayLayer::levelComplete", false)) {
+            g_completionGuardAvailable.store(g_originalLevelComplete != nullptr);
+        }
     }
 
     if (ok && g_build->playLayerShouldDrawHitboxesRva != 0) {
@@ -824,8 +864,8 @@ bool initialize() {
         g_originalIsIconUnlocked = nullptr;
         g_originalIsColorUnlocked = nullptr;
         g_originalPlayerSetRotation = nullptr;
-        g_levelComplete = nullptr;
-        g_instantCompleteAvailable.store(false);
+        g_originalLevelComplete = nullptr;
+        g_completionGuardAvailable.store(false);
         g_nativeMacroHookAvailable.store(false);
         g_unlockIconsHookAvailable.store(false);
         g_unlockColorsHookAvailable.store(false);
@@ -867,7 +907,7 @@ void shutdown() {
     g_hitboxTrailHookAvailable.store(false);
     g_hitboxTrailEnabled.store(false);
     g_practiceHookAvailable.store(false);
-    g_instantCompleteAvailable.store(false);
+    g_completionGuardAvailable.store(false);
     g_nativeMacroHookAvailable.store(false);
     g_nativeMacroRecording.store(false);
     g_nativeMacroPlaying.store(false);
@@ -884,11 +924,12 @@ void shutdown() {
     g_frameStepEnabled.store(false);
     g_frameStepPaused.store(false);
     g_frameStepBudget.store(0);
-    g_instantCompleteRequested.store(false);
+    g_assistedThisAttempt.store(false);
+    g_externalAssistActive.store(false);
     g_gameThreadId.store(0);
     g_appliedGameThreadPriority.store(THREAD_PRIORITY_ERROR_RETURN);
     g_originalPriorityCaptured.store(false);
-    g_levelComplete = nullptr;
+    g_originalLevelComplete = nullptr;
 #if GDCLIENT_ENABLE_GAME_HOOKS
     g_originalShouldDrawHitboxTrail = nullptr;
     g_originalShouldRecordHitboxTrail = nullptr;
@@ -914,7 +955,13 @@ bool hitboxTrailEnabled() { return g_hitboxTrailEnabled.load(); }
 void setHitboxTrailEnabled(bool enabled) {
     g_hitboxTrailEnabled.store(enabled && g_hitboxTrailHookAvailable.load() && g_inLevel.load());
 }
-bool instantCompleteReady() { return g_instantCompleteAvailable.load(); }
+bool completionGuardReady() { return g_completionGuardAvailable.load(); }
+bool assistedThisAttempt() { return g_assistedThisAttempt.load(); }
+std::uint64_t completionBlockedCount() { return g_completionBlockedCount.load(); }
+void setExternalAssistActive(bool active) {
+    g_externalAssistActive.store(active);
+    if (active && g_inLevel.load()) g_assistedThisAttempt.store(true);
+}
 bool inLevel() { return g_inLevel.load(); }
 bool practiceModeKnown() { return g_practiceHookAvailable.load(); }
 bool practiceModeActive() { return g_practiceMode.load(); }
@@ -976,11 +1023,6 @@ bool advanceOneFrame() {
 }
 void setGameThreadPriorityLevel(int level) { g_gameThreadPriorityLevel.store(std::clamp(level, 0, 2)); }
 int gameThreadPriorityLevel() { return g_gameThreadPriorityLevel.load(); }
-bool requestInstantComplete() {
-    if (!g_instantCompleteAvailable.load() || !g_inLevel.load()) return false;
-    g_instantCompleteRequested.store(true);
-    return true;
-}
 
 bool nativeMacroHookReady() { return g_nativeMacroHookAvailable.load() && g_supported.load(); }
 

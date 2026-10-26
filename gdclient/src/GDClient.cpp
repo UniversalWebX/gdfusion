@@ -895,11 +895,13 @@ void drawPhysics(HDC dc, int x, int y, int width) {
     drawButton(dc, {x + width - 220, y6 + 39, 96, 29}, gdclient::native::frameStepEnabled() ? L"Disable" : L"Enable", true);
     drawButton(dc, {x + width - 112, y6 + 39, 96, 29}, L"Step once", true);
 
-    const int y7 = y6 + 86;
-    drawCard(dc, {x, y7, width, 72}, L"Instant complete", L"Requests GD's native level-completion routine on the game thread. Local testing only; requires a supported executable.");
-    drawButton(dc, {x + width - 170, y7 + 36, 148, 28}, L"Complete level", gdclient::native::instantCompleteReady());
-
-    const int y8 = y7 + 80;
+    // Instant-complete was removed: it called the game's own level-completion
+    // routine directly, fabricating a completion without the level being
+    // played. That function (native_game_hooks.cpp) now does the opposite:
+    // PlayLayer::levelComplete is hooked and deliberately NOT forwarded
+    // whenever the attempt was assisted. Do not re-add a control that calls
+    // the game's completion routine directly.
+    const int y8 = y6 + 86;
     const bool trailReady = gdclient::native::hitboxTrailHookReady();
     const bool trailEnabled = gdclient::native::hitboxTrailEnabled();
     drawFeatureRow(dc, {x, y8, width, 72}, L"Native hitbox trail (experimental)",
@@ -1146,69 +1148,39 @@ void drawAbout(HDC dc, int x, int y, int width) {
     drawText(dc, x + 17, y3 + 59, width - 34, 37, L"Password/copy-lock/verification/account-access bypasses are intentionally not implemented. Other editor, replay, FPS/TPS, audio, and cosmetic features still need their own verified hooks.", RGB(224,178,115), 10, false);
 }
 
-// --- Mandatory assist-disclosure banner -------------------------------------
-// This is intentionally NOT wired to any setting, hotkey, Safe Mode state, or
-// settings.ini key. If any gameplay-affecting hook below is active, the player
-// (and anyone spectating or recording) can see that the run is assisted.
-// Do not add a toggle, keybind, opacity setting, or "stream-safe" mode that
-// hides this banner — that would defeat the point of having it. If you are
-// adding a new gameplay-affecting hook, add it to activeAssistSummary() too.
-std::wstring activeAssistSummary(bool& anyActive) {
-    std::vector<std::wstring> parts;
-
+// --- Mandatory assist indicator ----------------------------------------------
+// Not wired to any setting, hotkey, Safe Mode state, or settings.ini key, and
+// drawn last in renderOverlay() so the open menu cannot cover it either. If
+// any gameplay-affecting hook below is active, this dot is visible. Do not
+// add a toggle, keybind, opacity setting, or "stream-safe" mode that hides
+// it. If you add a new gameplay-affecting hook, add its check here too.
+bool anyAssistiveFeatureActive() {
     const double speed = (g_speedEnabled.load() && hasTimingHook()) ? g_speedMultiplier.load() : 1.0;
-    if (std::abs(speed - 1.0) > 0.001) {
-        wchar_t buf[32]{};
-        swprintf_s(buf, _countof(buf), L"SPEED %.2fx", speed);
-        parts.emplace_back(buf);
-    }
-    if (gdclient::native::noclipEnabled()) parts.emplace_back(L"NOCLIP");
-    if (gdclient::native::frameStepEnabled()) parts.emplace_back(L"FRAME-STEP");
-    if (gdclient::native::physicsTps() != 0) {
-        wchar_t buf[32]{};
-        swprintf_s(buf, _countof(buf), L"TPS %d", gdclient::native::physicsTps());
-        parts.emplace_back(buf);
-    }
-    if (gdclient::native::nativeMacroStats().playing) parts.emplace_back(L"NATIVE MACRO PLAYBACK");
-    if (g_macroReplaying.load()) parts.emplace_back(L"INPUT MACRO PLAYBACK");
-    if (g_autoClicker.load()) parts.emplace_back(L"AUTO CLICKER");
-    if (gdclient::native::hitboxesEnabled()) parts.emplace_back(L"DEBUG HITBOXES");
-    if (gdclient::native::hitboxTrailEnabled()) parts.emplace_back(L"HITBOX TRAIL");
-
-    anyActive = !parts.empty();
-    std::wstring joined;
-    for (std::size_t i = 0; i < parts.size(); ++i) {
-        if (i) joined += L"   •   ";
-        joined += parts[i];
-    }
-    return joined;
+    if (std::abs(speed - 1.0) > 0.001) return true;
+    if (gdclient::native::noclipEnabled()) return true;
+    if (gdclient::native::frameStepEnabled()) return true;
+    if (gdclient::native::physicsTps() != 0) return true;
+    if (gdclient::native::nativeMacroStats().playing) return true;
+    if (g_macroReplaying.load()) return true;
+    if (g_autoClicker.load()) return true;
+    if (gdclient::native::hitboxesEnabled()) return true;
+    if (gdclient::native::hitboxTrailEnabled()) return true;
+    return false;
 }
 
-// Always evaluated and drawn on every frame, independent of g_showHud,
-// g_menuOpen, g_safeMode, g_levelLabelsVisible, or overlay opacity. There is
-// no code path that can suppress this while an assist is active.
-void drawAssistDisclosureBanner(HDC dc, int clientWidth) {
-    bool anyActive = false;
-    const std::wstring summary = activeAssistSummary(anyActive);
-    if (!anyActive) return;
-
-    const int bannerW = std::clamp(clientWidth - 24, 260, 680);
-    const int bannerX = (clientWidth - bannerW) / 2;
-    constexpr int bannerY = 8;
-    constexpr int bannerH = 30;
-
-    rounded(dc, bannerX, bannerY, bannerW, bannerH, 8, RGB(132, 20, 20), RGB(255, 96, 96));
-    const std::wstring text = L"ASSIST ACTIVE — " + summary;
-    drawText(dc, bannerX + 10, bannerY, bannerW - 20, bannerH, text.c_str(), RGB(255, 236, 236), 12, true, DT_CENTER);
+// Fixed position, fixed size, fixed color. No parameters read from settings.
+void drawAssistIndicator(HDC dc, int clientWidth, int clientHeight) {
+    if (!anyAssistiveFeatureActive()) return;
+    constexpr int diameter = 16;
+    constexpr int margin = 14;
+    const int cx = clientWidth - margin - diameter;
+    const int cy = clientHeight - margin - diameter;
+    rounded(dc, cx, cy, diameter, diameter, diameter / 2, RGB(230, 40, 40), RGB(255, 140, 140));
 }
 
 void renderOverlay(HDC dc, int clientWidth, int clientHeight) {
     RECT client{0, 0, clientWidth, clientHeight};
     solidRect(dc, 0, 0, client.right, client.bottom, KEY_COLOR);
-
-    // Drawn first and unconditionally so nothing later in this function — no
-    // HUD toggle, no menu-closed state, no page switch — can cover or skip it.
-    drawAssistDisclosureBanner(dc, clientWidth);
 
     const COLORREF accent = accentColor();
     if (g_showHud.load()) {
@@ -1283,6 +1255,10 @@ void renderOverlay(HDC dc, int clientWidth, int clientHeight) {
             drawText(dc, toastX + 12, toastY, toastW - 24, 34, g_toast.c_str(), RGB(225, 239, 252), 11, true);
         }
     }
+
+    // Drawn absolutely last so the open menu, HUD, toast, and labels above
+    // can never paint over it while an assist is active.
+    drawAssistIndicator(dc, clientWidth, clientHeight);
 }
 
 void destroyBackBuffer() {
@@ -2071,14 +2047,7 @@ void handleMenuClick(int x, int y) {
             else showToast(L"One update queued.");
             return;
         }
-        const int completeY = stepY + 86;
-        if (contains({cx + cw - 170, completeY + 36, 148, 28}, lx, ly)) {
-            if (!gameplayModeAllowed(L"Instant complete")) return;
-            if (!gdclient::native::requestInstantComplete()) showToast(L"Instant complete requires a supported build and active level.");
-            else showToast(L"Instant completion queued on the game thread.");
-            return;
-        }
-        const int trailY = completeY + 80;
+        const int trailY = stepY + 86;
         if (contains({cx, trailY, cw, 72}, lx, ly)) {
             if (!gdclient::native::hitboxTrailHookReady()) { showToast(L"Native hitbox trail is only available on the supported 2.2091 Windows build."); return; }
             if (!gdclient::native::inLevel()) { showToast(L"Start a level before enabling the native hitbox trail."); return; }
@@ -2380,6 +2349,7 @@ DWORD WINAPI workerMain(void*) {
     bool wasNativeMacroPlaying = gdclient::native::nativeMacroStats().playing;
     std::uint64_t wasNativeMacroEventCount = gdclient::native::nativeMacroStats().eventCount;
     double wasSpeedMultiplier = g_speedMultiplier.load();
+    std::uint64_t wasCompletionBlockedCount = gdclient::native::completionBlockedCount();
     {
         std::wstring ready = L"GD Client: overlay ready. Menu=" + hotkeyName(g_bindMenu.load()) +
             L", speed=" + hotkeyName(g_bindSpeed.load()) + L", screenshot=" + hotkeyName(g_bindScreenshot.load()) +
@@ -2530,6 +2500,20 @@ DWORD WINAPI workerMain(void*) {
             }
             lastLabelClockRefresh = now;
         }
+        // Keep the native completion guard aware of assists that live purely in
+        // this file (it already tracks every native hook on its own).
+        gdclient::native::setExternalAssistActive(g_autoClicker.load() || g_macroReplaying.load());
+
+        // hookLevelComplete() in native_game_hooks.cpp increments this counter
+        // instead of letting the game register the completion whenever the
+        // attempt was assisted. This has no setting to disable it.
+        const std::uint64_t completionBlockedNow = gdclient::native::completionBlockedCount();
+        if (completionBlockedNow != wasCompletionBlockedCount) {
+            wasCompletionBlockedCount = completionBlockedNow;
+            showToast(L"Level Completed with Cheats — not recorded.");
+            needsRepaint = true;
+        }
+
         if (wasMenuOpen != g_menuOpen.load() || wasHudVisible != g_showHud.load() ||
             wasSpeedEnabled != g_speedEnabled.load() || wasAutoClicker != g_autoClicker.load() ||
             wasMacroRecording != g_macroRecording.load() || wasMacroReplaying != g_macroReplaying.load() ||

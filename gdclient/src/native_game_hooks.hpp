@@ -43,7 +43,6 @@ bool hitboxHookReady();
 bool hitboxTrailHookReady();
 bool hitboxTrailEnabled();
 void setHitboxTrailEnabled(bool enabled);
-bool instantCompleteReady();
 bool inLevel();
 bool practiceModeKnown();
 bool practiceModeActive();
@@ -76,7 +75,20 @@ bool advanceOneFrame();
 // deliberately excluded to avoid starving Windows or other applications.
 void setGameThreadPriorityLevel(int level);
 int gameThreadPriorityLevel();
-bool requestInstantComplete();
+
+// Completion guard: if any gameplay-affecting hook (native or external) was
+// active at any point since the attempt started, the game's own
+// PlayLayer::levelComplete is intercepted and NOT forwarded, so the attempt
+// never registers as completed in the game. completionBlockedCount() goes up
+// each time this happens; the UI polls it to show "Level Completed with
+// Cheats" instead of a normal completion. This has no setting to disable it.
+bool completionGuardReady();
+bool assistedThisAttempt();
+std::uint64_t completionBlockedCount();
+// Called by the UI layer for assists that live outside this file (the
+// input-level macro player, the auto-clicker) so they count toward the
+// completion guard the same as native hooks do.
+void setExternalAssistActive(bool active);
 
 // Engine-input macro: events are intercepted at GJBaseGameLayer::handleButton
 // and replayed against the supported game's simulation-time timeline. Use only

@@ -6035,20 +6035,20 @@
       "id": "safety-accessibility.cheat-indicator",
       "name": "Cheat Indicator",
       "category": "Safety & Accessibility",
-      "description": "Catalog entry only. Requires validated Geometry Dash game-object, scheduler, editor, rendering, save, or collision integration before it can be activated.",
-      "implementation_status": "not-wired",
-      "activation_type": "game-hook-required",
+      "description": "A fixed 16px solid red dot is drawn in the bottom-right corner of the overlay, last in the render order so the open menu cannot cover it, whenever any gameplay-affecting hook is active (speed scale, noclip, frame-step, non-default physics TPS, native or input-level macro playback, the auto-clicker, debug hitboxes, or the hitbox-trail override). See anyAssistiveFeatureActive() in src/GDClient.cpp.",
+      "implementation_status": "implemented",
+      "activation_type": "external",
       "risk_level": "low",
       "default_enabled": false,
       "default_hotkey": "NONE",
       "settings_schema": {},
       "compatibility": [
         "Windows x64",
-        "Geometry Dash 2.2074 target not runtime-verified"
+        "Always active; does not require a verified native-hook build"
       ],
       "safe_mode_recommended": false,
       "requires_game_focus": false,
-      "notes": "The menu must never represent a not-wired entry as active functionality."
+      "notes": "Deliberately has no setting, hotkey, opacity control, or stream-safe mode to hide it, and is not written to settings.ini. Not affected by Safe Mode, the HUD toggle, or menu state. Compiled but not yet runtime-verified against a live game process."
     },
     {
       "id": "safety-accessibility.disable-gameplay-keys-in-menu",
@@ -6363,28 +6363,22 @@
     },
     {
       "id": "safety-accessibility.record-integrity-warning",
-      "name": "Record Integrity Warning",
+      "name": "Completion Guard",
       "category": "Safety & Accessibility",
-      "description": "Catalog entry only. Requires validated Geometry Dash game-object, scheduler, editor, rendering, save, or collision integration before it can be activated.",
-      "implementation_status": "not-wired",
-      "activation_type": "game-hook-required",
+      "description": "PlayLayer::levelComplete is hooked (hookLevelComplete in src/native_game_hooks.cpp). If any gameplay-affecting hook (native or external) was active at any point since the attempt started, the hook does not forward the call to the real game function: no end-level screen, no local best-percent write, and no score/star submission, since that is understood to happen only as a consequence of this same call completing. The overlay shows 'Level Completed with Cheats — not recorded.' instead. A clean attempt is a pure passthrough.",
+      "implementation_status": "experimental",
+      "activation_type": "native-hook",
       "risk_level": "low",
       "default_enabled": false,
       "default_hotkey": "NONE",
-      "settings_schema": {
-        "loop": {
-          "type": "boolean",
-          "default": false,
-          "description": "Repeat playback when supported by the selected tool."
-        }
-      },
+      "settings_schema": {},
       "compatibility": [
         "Windows x64",
-        "Geometry Dash 2.2074 target not runtime-verified"
+        "Only exact PE fingerprints for Geometry Dash 2.209 / 2.2091"
       ],
       "safe_mode_recommended": false,
       "requires_game_focus": false,
-      "notes": "The menu must never represent a not-wired entry as active functionality."
+      "notes": "Best-effort, not a verified guarantee: the assumption that score/star submission is strictly downstream of this one function call is based on public understanding of GD's completion flow, not on tracing this build's disassembly. Has not been compiled or runtime-tested. Verify against a real completion, with and without an assist active, before relying on it."
     },
     {
       "id": "camera-display.camera-zoom",
